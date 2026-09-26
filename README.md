@@ -17,20 +17,40 @@
 ├── backend/                  FastAPI（Python） 后端
 │   ├── app/routers/          每个业务模块一组接口
 │   ├── app/services/         业务规则与状态流转
-│   └── app/store.py          内存数据仓库与示例数据
+│   ├── app/seed.py           示例数据生成规格（确定性生成）
+│   ├── app/seed_check.py     示例数据启动校验
+│   └── app/store.py          内存数据仓库（启动时先校验再装载）
 ├── .gitignore
 └── docker-compose.yml
 ```
 
 ## 启动
 
+### 本地开发（推荐）
+
+```bash
+make install    # 安装前后端依赖；虚拟环境损坏会自动重建
+make check      # 校验示例数据（重点：客户申诉的申诉编号、申诉单位、涉及报告、申诉内容）
+make backend    # 启动后端，启动前自动校验示例数据
+make frontend   # 启动前端 dev server
+```
+
+其他常用目标：`make seed`（重新生成示例数据并验证两次生成一致）、
+`make build`（前端生产构建）、`make clean`（清理 .venv、node_modules 等本地残留）。
+
 ### 后端
 
 ```bash
 cd backend
-python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
-./run.sh
+./run.sh        # 自动准备 .venv、按 requirements.txt 装依赖、校验示例数据后再启动
 ```
+
+`run.sh` 的行为约定：
+
+- `.venv` 缺失或损坏（比如从别的机器拷贝过来的残留）时自动重建；
+- `requirements.txt` 没变化就跳过依赖安装，变化了才重新安装；
+- 启动前执行 `python -m app.seed_check` 校验示例数据，失败会逐条打印原因
+  并以非零码退出，不会带着坏数据起服务；修复后重新执行 `./run.sh` 即可。
 
 健康检查：`curl http://127.0.0.1:8000/api/health`
 
@@ -44,6 +64,18 @@ npm run dev
 
 前端默认监听 `http://127.0.0.1:5173/`，dev server 不会自动打开浏览器，
 需要自己访问。`/api` 由 vite 代理到后端 `http://127.0.0.1:8000`。
+
+## 示例数据
+
+示例数据由 `backend/app/seed.py` 中的 `MODULE_SPECS` 规格表**确定性生成**：
+同样的规格在任何机器、任何时间生成的结果完全一致，每次启动都重新生成，
+运行期的改动不会残留到下一次启动。
+
+- 改数据只改 `MODULE_SPECS`，不要手工编辑生成结果；
+- `python -m app.seed --verify` 验证重复生成结果一致；
+- `python -m app.seed_check`（或 `make check`）校验数据，客户申诉模块会
+  专项检查申诉编号（`COMP-四位数字` 且不重复）、申诉单位、涉及报告、申诉内容；
+- 校验失败会打印具体模块、行号、字段和原因，修复后重启即恢复一致。
 
 ## 业务模块
 

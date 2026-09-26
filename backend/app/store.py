@@ -1,16 +1,20 @@
 """内存数据仓库：给每个业务模块准备一份可筛选、可流转的示例数据。
 
 真实项目里这里会换成数据库访问层；当前实现只依赖标准库，保证克隆下来就能起。
+每次启动都从 app.seed 重新生成数据并先过一遍 app.seed_check 校验，
+校验不通过会直接拒绝启动，避免带着残留的旧数据提供服务。
 """
 from __future__ import annotations
 
 from typing import Any
 
 from app.seed import SEED_ROWS
+from app.seed_check import ensure_valid
 
 
 class Store:
     def __init__(self) -> None:
+        ensure_valid(SEED_ROWS)
         self._tables: dict[str, list[dict[str, Any]]] = {
             name: [dict(row) for row in rows] for name, rows in SEED_ROWS.items()
         }
