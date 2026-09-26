@@ -5,14 +5,29 @@
 """
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.routers import ROUTERS
+from app.seed_check import format_issues, verify_seed
 from app.store import store
 
-app = FastAPI(title="实验室样品检测管理平台", version="1.0.0")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """启动检查：示例数据与规格不一致时打印原因并拒绝启动，避免带着残留状态运行。"""
+    issues = verify_seed()
+    if issues:
+        raise RuntimeError("\n" + format_issues(issues))
+    app.state.seed_ok = True
+    yield
+
+
+app = FastAPI(title="实验室样品检测管理平台", version="1.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -28,8 +43,16 @@ for module in ROUTERS:
 
 @app.get("/api/health")
 def health() -> dict[str, object]:
-    """健康检查：确认服务已经监听、示例数据已经就绪。"""
-    return {"ok": True, "app": settings.app_name, "modules": len(store.module_names())}
+    """健康检查：确认服务已经监听、示例数据已经通过启动校验。"""
+    return {
+        "ok": True,
+        "app": settings.app_name,
+        "modules": len(store.module_names()),
+        "seed": {
+            "checked": bool(getattr(app.state, "seed_ok", False)),
+            "source": "app/seed_spec.py",
+        },
+    }
 
 
 @app.get("/api/overview")
